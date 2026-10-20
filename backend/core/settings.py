@@ -41,13 +41,22 @@ if not DEBUG:
         raise ImproperlyConfigured("ALLOWED_HOSTS must not contain '*' when DEBUG is False.")
 
 INSTALLED_APPS = [
-    "daphne",  # باید اولین مورد باشد
-    "django.contrib.staticfiles",
-    "channels",
-    "corsheaders",
-    "chat",
+    'daphne', 
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    
+    # Third party apps
+    'rest_framework',
+    'corsheaders',
+    
+    # Local apps
+    'chat',
+    'store',
 ]
-
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",

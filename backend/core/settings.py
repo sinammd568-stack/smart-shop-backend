@@ -1,6 +1,7 @@
 """Django settings for the AI-powered e-commerce backend."""
 import os
 from pathlib import Path
+import dj_database_url # 👈 اضافه شد
 
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
@@ -8,14 +9,11 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-
 def env_list(name, default=""):
     return [v.strip() for v in os.getenv(name, default).split(",") if v.strip()]
 
-
 def env_bool(name, default):
     return os.getenv(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
-
 
 def env_int(name, default):
     try:
@@ -23,13 +21,11 @@ def env_int(name, default):
     except (TypeError, ValueError):
         return default
 
-
 DEFAULT_SECRET_KEY = "dev-insecure-key-change-me"
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", DEFAULT_SECRET_KEY)
 DEBUG = env_bool("DEBUG", True)
 
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1")
-# Render یک هاست خارجی تعریف می‌کند
 RENDER_HOST = os.getenv("RENDER_EXTERNAL_HOSTNAME")
 if RENDER_HOST:
     ALLOWED_HOSTS.append(RENDER_HOST)
@@ -57,6 +53,7 @@ INSTALLED_APPS = [
     'chat',
     'store',
 ]
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -67,24 +64,23 @@ MIDDLEWARE = [
 ROOT_URLCONF = "core.urls"
 ASGI_APPLICATION = "core.asgi.application"
 
+# 👈 استفاده از دیتابیس ابری (PostgreSQL) با فال‌بک به SQLite برای لوکال
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
+    "default": dj_database_url.config(
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        conn_max_age=600
+    )
 }
 
-# برای نسخه اول (یک instance) لایه درون‌حافظه‌ای کافی است.
-# برای چند instance از channels-redis استفاده کنید (محدودیت‌های نرخ هم باید به Redis منتقل شوند).
 CHANNEL_LAYERS = {
     "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"},
 }
 
 # ---------------- CORS ----------------
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
-# اختیاری: برای دامنه‌های پیش‌نمایش، مثلاً ^https://.*\.my-shop\.pages\.dev$
 CORS_ALLOWED_ORIGIN_REGEXES = env_list("CORS_ALLOWED_ORIGIN_REGEXES")
-CORS_ALLOW_METHODS = ["GET", "OPTIONS"]
+# 👈 این خط رو اصلاح کردم تا پنل ادمین بتونه محصول و سفارش بسازه یا تغییر بده
+CORS_ALLOW_METHODS = ["DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT"]
 CORS_ALLOW_CREDENTIALS = False
 
 # ---------------- امنیت ----------------
@@ -95,14 +91,11 @@ SECURE_REFERRER_POLICY = "same-origin"
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = env_bool("FORCE_HTTPS", True)
-    SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]  # health check داخلی روی HTTP
-    SECURE_HSTS_SECONDS = env_int("HSTS_SECONDS", 2_592_000)  # ۳۰ روز
+    SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]
+    SECURE_HSTS_SECONDS = env_int("HSTS_SECONDS", 2_592_000)
     SECURE_HSTS_INCLUDE_SUBDOMAINS = False
 
-# تعداد پراکسی‌های مورد اعتماد جلوی برنامه (Render = 1). در لوکال ۰.
 TRUSTED_PROXY_COUNT = env_int("TRUSTED_PROXY_COUNT", 0 if DEBUG else 1)
-
-# محدودیت‌های چت
 CHAT_MAX_CONNECTIONS_PER_IP = env_int("CHAT_MAX_CONNECTIONS_PER_IP", 5)
 CHAT_MAX_MESSAGES_PER_MINUTE = env_int("CHAT_MAX_MESSAGES_PER_MINUTE", 20)
 
@@ -124,4 +117,15 @@ LOGGING = {
     "disable_existing_loggers": False,
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "INFO"},
+}
+
+AUTH_USER_MODEL = 'store.User'
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.AllowAny',
+    ),
 }

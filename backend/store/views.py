@@ -1,7 +1,8 @@
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Product, Order, User
+from django.db.models import Sum, F, Count
+from .models import Product, Order, User, OrderItem
 from .serializers import ProductSerializer, OrderSerializer, UserSerializer
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -9,15 +10,41 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
 
     def get_permissions(self):
-        if self.action in ['list', 'create', 'destroy']:
+        if self.action in ['list', 'create', 'destroy', 'stats']:
             return [permissions.IsAdminUser()]
         return [permissions.AllowAny()]
 
-    # 👈 این تابع جدید: اطلاعات کاربری که الان لاگین کرده رو برمی‌گردونه
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def me(self, request):
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
+
+    # 👈 این تابع جدید: آمار فروش فروشنده‌ها رو برمی‌گردونه
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        sellers = User.objects.filter(is_seller=True)
+        stats_data = []
+        
+        for seller in sellers:
+            # محاسبه مجموع فروش این فروشنده
+            # (فقط سفارشاتی که وضعیتشون تحویل شده یا در حال پردازشه)
+            total_sales = OrderItem.objects.filter(
+                product__seller=seller,
+                order__status__in=['processing', 'shipped', 'delivered']
+            ).aggregate(
+                total=Sum(F('price') * F('quantity'), output_field=models.IntegerField())
+            )['total'] or 0
+            
+            product_count = Product.objects.filter(seller=seller).count()
+            
+            stats_data.append({
+                'id': seller.id,
+                'username': seller.username,
+                'total_sales': total_sales,
+                'product_count': product_count,
+            })
+            
+        return Response(stats_data)
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all().order_by('-created_at')

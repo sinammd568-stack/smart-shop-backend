@@ -13,14 +13,16 @@ logger = logging.getLogger(__name__)
 
 MAX_HISTORY = 12
 MAX_MESSAGE_LEN = 500
-MAX_FRAME_CHARS = 4096  # بزرگ‌تر از این، قبل از پردازش رد می‌شود
+MAX_FRAME_CHARS = 4096
 MAX_MESSAGES_PER_CONNECTION = 200
-MIN_INTERVAL = 1.0  # حداقل فاصله (ثانیه) بین دو پیام یک اتصال
+MIN_INTERVAL = 1.0
 
-# محدودیت‌ها در حافظه‌ی همین پروسه نگه‌داری می‌شوند (مناسب یک instance).
 connection_limiter = ConnectionLimiter(settings.CHAT_MAX_CONNECTIONS_PER_IP)
 message_limiter = SlidingWindowLimiter(settings.CHAT_MAX_MESSAGES_PER_MINUTE, 60)
 
+# ---------------------------------------------------------
+# پرامپت‌های سیستم
+# ---------------------------------------------------------
 SYSTEM_PROMPT = f"""تو یک دستیار فروشگاه هستی.
 وظیفه‌ات کمک به مشتری برای انتخاب محصول مناسب است.
 
@@ -41,6 +43,17 @@ SYSTEM_PROMPT = f"""تو یک دستیار فروشگاه هستی.
 
 فهرست محصولات:
 {CATALOG_TEXT}
+"""
+
+ADMIN_SYSTEM_PROMPT = """تو یک مشاور کسب و کار و دستیار مدیر فروشگاه اینترنتی هستی.
+وظیفه‌ات کمک به مدیر (ادمین) برای مدیریت بهتر فروشگاه، تحلیل آمار فروش، و ارائه استراتژی‌های فروش است.
+
+قوانین:
+- همیشه به فارسی، حرفه‌ای، تحلیلی و کوتاه پاسخ بده.
+- به مدیر پیشنهاد بده که چطور فروش را افزایش دهد، چطور محصولات را دسته‌بندی کند و چطور به فروشنده‌ها بازخورد بدهد.
+- اگر مدیر آمار فروش یک فروشنده را پرسید، با توجه به اطلاعات موجود، تحلیل استراتژیک ارائه بده.
+- تمرکز تو فقط روی مسائل مدیریتی، بازاریابی، و تحلیل داده‌های فروشگاه است.
+- هرگز نقش یک فروشنده معمولی را بازی نکن و به مشتری‌ها محصول پیشنهاد نده.
 """
 
 
@@ -86,7 +99,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             raw_message = data.get("message", "")
             if not isinstance(raw_message, str):
                 raise ValueError("message must be a string")
-        except ValueError:  # JSONDecodeError هم زیرکلاس ValueError است
+            
+            # 👈 چک میکنیم اگه ادمین بود، فلگ مربوطه رو بگیریم
+            is_admin_mode = data.get("admin_mode", False)
+            
+        except ValueError:
             await self._send("error", "فرمت پیام نامعتبر است.")
             return
 
@@ -116,7 +133,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.sent_count += 1
 
         self.history.append({"role": "user", "content": message})
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + self.history[-MAX_HISTORY:]
+        
+        # 👈 انتخاب پرامپت سیستم بر اساس اینکه ادمین است یا خیر
+        current_prompt = ADMIN_SYSTEM_PROMPT if is_admin_mode else SYSTEM_PROMPT
+        messages = [{"role": "system", "content": current_prompt}] + self.history[-MAX_HISTORY:]
 
         parts = []
         try:
@@ -136,9 +156,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 if delta:
                     parts.append(delta)
                     await self._send("chunk", delta)
-        except Exception:
+        except Exception as e:
             logger.exception("Groq request failed")
-            self.history.pop()  # پیام ناموفق را از تاریخچه حذف کن
+            self.history.pop()
             await self._send("error", "مشکلی در ارتباط با دستیار پیش آمد. لطفاً دوباره تلاش کنید.")
             return
 
@@ -150,7 +170,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         self.history.append({"role": "assistant", "content": reply})
         self.history = self.history[-MAX_HISTORY:]
-        await self._send("done", reply, product_ids=find_product_ids(reply))
+        
+        # 👈 اگه ادمین بود، نیازی به برگردوندن آی‌دی محصولات برای نمایش کارت محصول نیست
+        product_ids = find_product_ids(reply) if not is_admin_mode else []
+        
+        await self._send("done", reply, product_ids=product_ids)
 
     async def _send(self, msg_type, message, **extra):
         payload = {"type": msg_type, "message": message, **extra}

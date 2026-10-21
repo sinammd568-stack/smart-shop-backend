@@ -11,13 +11,14 @@ class User(AbstractUser):
 
 # ۲. مدل محصولات
 class Product(models.Model):
+    seller = models.ForeignKey(User, on_delete=models.CASCADE, related_name='products', null=True, blank=True) # 👈 اضافه شد
     name = models.CharField(max_length=200)
     description = models.TextField()
-    price = models.PositiveIntegerField() # قیمت به تومان
-    old_price = models.PositiveIntegerField(blank=True, null=True) # برای تخفیف
+    price = models.PositiveIntegerField() 
+    old_price = models.PositiveIntegerField(blank=True, null=True) 
     category = models.CharField(max_length=50)
-    image = models.URLField() # لینک عکس محصول
-    tag = models.CharField(max_length=50, blank=True) # مثل: پرفروش، جدید
+    image = models.URLField() 
+    tag = models.CharField(max_length=50, blank=True) 
     rating = models.FloatField(default=4.5)
     created_at = models.DateTimeField(auto_now_add=True)
 

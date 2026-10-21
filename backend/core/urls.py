@@ -1,7 +1,17 @@
-from django.http import JsonResponse
-from django.urls import include, path
+from django.contrib import admin
+from django.urls import path, include
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
 
 urlpatterns = [
-    path("", lambda request: JsonResponse({"service": "smart-shop-backend", "status": "ok"})),
-    path("api/", include("chat.urls")),
+    path('admin/', admin.site.urls),
+    
+    # مسیرهای API فروشگاه
+    path('api/', include('store.urls')),
+    
+    # مسیرهای لاگین و احراز هویت
+    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]

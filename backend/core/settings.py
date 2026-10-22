@@ -55,8 +55,10 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
-    'cloudinary_storage', # 👈 اضافه شد
-    'cloudinary',         # 👈 اضافه شد
+    
+    # Cloudinary (باید بالای staticfiles باشه، ولی اینجا هم اوکیه چون تنظیمات جدا داره)
+    'cloudinary_storage',
+    'cloudinary',
     
     # Local apps
     'chat',
@@ -67,7 +69,6 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware", 
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "cloudinary_storage.middleware.MediaCloudinaryStorageMiddleware", # 👈 اضافه شد
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -162,7 +163,16 @@ CLOUDINARY_STORAGE = {
     'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
     'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
 }
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
+# 👈 روش استاندارد جدید جنگو برای تنظیم استوریج (بدون نیاز به میدل‌ور)
+STORAGES = {
+    "default": {
+        "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
 # ---------------- کاربر و JWT ----------------
 AUTH_USER_MODEL = 'store.User'

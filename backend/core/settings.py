@@ -55,17 +55,19 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
+    'cloudinary_storage', # 👈 اضافه شد
+    'cloudinary',         # 👈 اضافه شد
     
     # Local apps
     'chat',
     'store',
 ]
 
-# 👈 این بخش حیاتی بود که جا افتاده بود
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware", 
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "cloudinary_storage.middleware.MediaCloudinaryStorageMiddleware", # 👈 اضافه شد
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -75,7 +77,6 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "core.urls"
 
-# 👈 این بخش هم برای پنل ادمین حیاتی بود
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -154,6 +155,14 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "INFO"},
 }
+
+# ---------------- Cloudinary ----------------
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
+    'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
+    'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
+}
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # ---------------- کاربر و JWT ----------------
 AUTH_USER_MODEL = 'store.User'

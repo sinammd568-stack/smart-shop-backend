@@ -1,7 +1,7 @@
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Sum, F, Count
+from django.db.models import Sum, F, IntegerField # 👈 این خط اصلاح شد
 from .models import Product, Order, User, OrderItem
 from .serializers import ProductSerializer, OrderSerializer, UserSerializer
 
@@ -19,20 +19,17 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
 
-    # 👈 این تابع جدید: آمار فروش فروشنده‌ها رو برمی‌گردونه
     @action(detail=False, methods=['get'])
     def stats(self, request):
         sellers = User.objects.filter(is_seller=True)
         stats_data = []
         
         for seller in sellers:
-            # محاسبه مجموع فروش این فروشنده
-            # (فقط سفارشاتی که وضعیتشون تحویل شده یا در حال پردازشه)
             total_sales = OrderItem.objects.filter(
                 product__seller=seller,
                 order__status__in=['processing', 'shipped', 'delivered']
             ).aggregate(
-                total=Sum(F('price') * F('quantity'), output_field=models.IntegerField())
+                total=Sum(F('price') * F('quantity'), output_field=IntegerField())
             )['total'] or 0
             
             product_count = Product.objects.filter(seller=seller).count()

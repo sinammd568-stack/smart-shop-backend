@@ -1,14 +1,14 @@
 import json
 import logging
 import time
-import re
 from channels.generic.websocket import AsyncWebsocketConsumer
-from channels.db import database_sync_to_async # 👈 برای کوئری زدن به دیتابیس در حالت Async
+from channels.db import database_sync_to_async
 from django.conf import settings
+from django.db.models import Sum, F, IntegerField
 from groq import AsyncGroq
 
 from .security import ConnectionLimiter, SlidingWindowLimiter, clean_message, client_ip
-from store.models import Product # 👈 ایمپورت مدل محصول برای خواندن از دیتابیس
+from store.models import Product, Order, User, OrderItem
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +22,12 @@ connection_limiter = ConnectionLimiter(settings.CHAT_MAX_CONNECTIONS_PER_IP)
 message_limiter = SlidingWindowLimiter(settings.CHAT_MAX_MESSAGES_PER_MINUTE, 60)
 
 # ---------------------------------------------------------
-# توابع کمکی برای خواندن داینامیک از دیتابیس
+# توابع داینامیک برای خواندن از دیتابیس
 # ---------------------------------------------------------
 
 @database_sync_to_async
 def get_dynamic_catalog():
-    """لیست محصولات رو از دیتابیس می‌خونه و به متن تبدیل می‌کنه"""
+    """لیست محصولات رو از دیتابیس می‌خونه و به متن تبدیل می‌کنه (برای مشتری)"""
     products = Product.objects.all()
     if not products:
         return "در حال حاضر هیچ محصولی در فروشگاه موجود نیست."
@@ -43,10 +43,44 @@ def find_product_ids_dynamic(reply_text):
     products = Product.objects.all()
     found_ids = []
     for p in products:
-        # اگه اسم محصول توی جواب ربات بود، آیدیش رو اضافه کن
         if p.name in reply_text:
             found_ids.append(p.id)
     return found_ids
+
+@database_sync_to_async
+def get_admin_stats():
+    """گرفتن آمار لحظه‌ای فروشگاه از دیتابیس (برای ادمین)"""
+    total_revenue = Order.objects.filter(
+        status__in=['processing', 'shipped', 'delivered']
+    ).aggregate(total=Sum('total_price'))['total'] or 0
+    
+    total_orders = Order.objects.count()
+    pending_orders = Order.objects.filter(status='pending').count()
+    total_users = User.objects.count()
+    total_sellers = User.objects.filter(is_seller=True).count()
+    total_products = Product.objects.count()
+
+    # پیدا کردن بهترین فروشنده
+    top_seller_data = OrderItem.objects.filter(
+        order__status__in=['processing', 'shipped', 'delivered']
+    ).values('product__seller__username').annotate(
+        sales=Sum(F('price') * F('quantity'), output_field=IntegerField())
+    ).order_by('-sales').first()
+
+    top_seller_text = "هنوز فروشی ثبت نشده است"
+    if top_seller_data and top_seller_data['product__seller__username']:
+        top_seller_text = f"{top_seller_data['product__seller__username']} با {top_seller_data['sales']:,} تومان فروش"
+
+    return f"""
+    📊 **آمار لحظه‌ای فروشگاه (از دیتابیس):**
+    - درآمد کل (سفارشات موفق/در حال پردازش): {total_revenue:,} تومان
+    - تعداد کل سفارشات: {total_orders} عدد
+    - سفارشات در انتظار پرداخت: {pending_orders} عدد
+    - تعداد کل کاربران: {total_users} نفر
+    - تعداد فروشندگان فعال: {total_sellers} نفر
+    - تعداد کل محصولات: {total_products} عدد
+    - بهترین فروشنده: {top_seller_text}
+    """
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -125,11 +159,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         self.history.append({"role": "user", "content": message})
         
-        # 👈 ساخت پرامپت بر اساس نقش و محصولات داینامیک دیتابیس
+        # 👈 انتخاب پرامپت و آوردن دیتای داینامیک
         if is_admin_mode:
-            current_prompt = """تو یک مشاور کسب و کار و دستیار مدیر فروشگاه اینترنتی هستی.
+            admin_stats = await get_admin_stats()
+            current_prompt = f"""تو یک مشاور کسب و کار و دستیار مدیر فروشگاه اینترنتی هستی.
 وظیفه‌ات کمک به مدیر (ادمین) برای مدیریت بهتر فروشگاه، تحلیل آمار فروش، و ارائه استراتژی‌های فروش است.
-همیشه به فارسی، حرفه‌ای، تحلیلی و کوتاه پاسخ بده."""
+
+{admin_stats}
+
+قوانین:
+- همیشه به فارسی، حرفه‌ای، تحلیلی و کوتاه پاسخ بده.
+- از اطلاعات بالا برای پاسخ به سوالات مدیر استفاده کن.
+- هرگز از مدیر نخواه که آمار را به تو بدهد، چون تو به دیتابیس دسترسی داری و آمار بالا لحظه‌ای است.
+- اگر مدیر پرسید "امروز چطور بود؟" یا "آمار بده"، همین اطلاعات بالا را تحلیل کن.
+"""
         else:
             catalog_text = await get_dynamic_catalog()
             current_prompt = f"""تو یک دستیار فروشگاه هستی.
@@ -180,7 +223,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.history.append({"role": "assistant", "content": reply})
         self.history = self.history[-MAX_HISTORY:]
         
-        # 👈 پیدا کردن آیدی محصولات به صورت داینامیک
+        # پیدا کردن آیدی محصولات فقط در حالت مشتری
         product_ids = await find_product_ids_dynamic(reply) if not is_admin_mode else []
         
         await self._send("done", reply, product_ids=product_ids)

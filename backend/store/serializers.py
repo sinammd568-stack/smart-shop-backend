@@ -21,7 +21,9 @@ class ProductSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Product
-        fields = '__all__'
+        # 👈 فیلدها رو دقیق مشخص کردیم تا seller از سمت فرانت‌اند اجباری نباشه
+        fields = ['id', 'name', 'description', 'price', 'old_price', 'category', 'image', 'tag', 'rating', 'created_at', 'seller', 'seller_name']
+        read_only_fields = ['seller', 'seller_name', 'rating', 'created_at'] # 👈 اینا فقط خواندنی هستن
 
 class OrderItemSerializer(serializers.ModelSerializer):
     product_name = serializers.ReadOnlyField(source='product.name')

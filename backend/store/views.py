@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -47,7 +47,7 @@ class UserViewSet(viewsets.ModelViewSet):
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all().order_by('-created_at')
     serializer_class = ProductSerializer
-    parser_classes = (MultiPartParser, FormParser) # 👈 اضافه شد
+    parser_classes = (MultiPartParser, FormParser)
     
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -61,3 +61,33 @@ class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all().order_by('-created_at')
     serializer_class = OrderSerializer
     permission_classes = [permissions.AllowAny]
+
+    # 👈 منطق جدید برای ثبت سفارش همراه با آیتم‌ها
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        items_data = data.get('items', [])
+        
+        if not items_data:
+            return Response({'error': 'سبد خرید خالی است'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # ساخت سفارش اصلی
+        order = Order.objects.create(
+            first_name=data.get('first_name', ''),
+            last_name=data.get('last_name', ''),
+            phone=data.get('phone', ''),
+            address=data.get('address', ''),
+            total_price=data.get('total_price', 0),
+            status='pending'
+        )
+
+        # ساخت آیتم‌های سفارش
+        for item in items_data:
+            OrderItem.objects.create(
+                order=order,
+                product_id=item.get('id'),
+                price=item.get('price'),
+                quantity=item.get('quantity')
+            )
+
+        serializer = self.get_serializer(order)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

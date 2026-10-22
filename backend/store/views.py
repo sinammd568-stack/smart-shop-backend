@@ -1,7 +1,8 @@
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Sum, F, IntegerField # 👈 این خط اصلاح شد
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.db.models import Sum, F, IntegerField
 from .models import Product, Order, User, OrderItem
 from .serializers import ProductSerializer, OrderSerializer, UserSerializer
 
@@ -46,6 +47,7 @@ class UserViewSet(viewsets.ModelViewSet):
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all().order_by('-created_at')
     serializer_class = ProductSerializer
+    parser_classes = (MultiPartParser, FormParser) # 👈 اضافه شد
     
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
